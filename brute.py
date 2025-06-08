@@ -6,13 +6,13 @@ from mnemonic import Mnemonic
 from web3 import Web3
 import requests
 
-# Force immediate output for GitHub Actions or CI environments
+# Force immediate output for CI environments
 sys.stdout.reconfigure(line_buffering=True)
 
 # Configuration
 OUTPUT_FILE = "seed.txt"
 API_FILE = "API.txt"
-CHECK_INTERVAL = 500  # Progress every 500 attempts
+CHECK_INTERVAL = 1000  # Progress every 1000 attempts
 REQUEST_INTERVAL = 1.0  # 1 request/second per API key
 MAX_KEYS = 6  # Number of API keys to use
 
@@ -100,7 +100,7 @@ def main():
     print("Scanning 2 derivation paths (MetaMask and Trust Wallet) per seed phrase.", flush=True)
     print(f"Checking ~{MAX_KEYS} wallets/sec with {MAX_KEYS} API keys (1 request/sec/key).", flush=True)
     print(f"Appending wallets with transactions to {OUTPUT_FILE}.", flush=True)
-    print("Note: MY GOD WILL SURELY DO HIS WILL, AMEN.", flush=True)
+    print("Note: This is not a recovery tool. Success rate is near-zero with random mnemonics.", flush=True)
 
     api_keys = read_api_keys()
     if not api_keys:
