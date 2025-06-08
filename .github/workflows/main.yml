@@ -35,12 +35,18 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Commit and push updated seed.txt
+    - name: Commit and push updated seed.txt if it exists and changed
       run: |
-        git config user.name "github-actions"
-        git config user.email "github-actions@github.com"
-        git add seed.txt
-        git commit -m "Update seed.txt after scan run" || echo "No changes to commit"
-        git push
+        if [ -f seed.txt ]; then
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add seed.txt
+          git diff --cached --quiet seed.txt || {
+            git commit -m "Update seed.txt after scan run"
+            git push
+          }
+        else
+          echo "No seed.txt file found, skipping commit."
+        fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
