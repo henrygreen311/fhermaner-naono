@@ -1,0 +1,46 @@
+name: Wallet Scanner
+
+on:
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+  schedule:
+    - cron: '0 */6 * * *'  # Runs every 6 hours
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # Safety limit at 6 hours
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: true
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install web3 mnemonic requests
+
+    - name: Run brute.py with timeout
+      run: |
+        timeout 21000 python brute.py || {
+          echo "brute.py completed or timed out after 5h50m"
+          exit 0
+        }
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Commit and push updated seed.txt
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add seed.txt
+        git commit -m "Update seed.txt after scan run" || echo "No changes to commit"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
