@@ -1,9 +1,13 @@
 import time
 import random
 import threading
+import sys
 from mnemonic import Mnemonic
 from web3 import Web3
 import requests
+
+# Force immediate output for GitHub Actions or CI environments
+sys.stdout.reconfigure(line_buffering=True)
 
 # Configuration
 OUTPUT_FILE = "seed.txt"
@@ -12,16 +16,16 @@ CHECK_INTERVAL = 500  # Progress every 500 attempts
 REQUEST_INTERVAL = 1.0  # 1 request/second per API key
 MAX_KEYS = 6  # Number of API keys to use
 
-# Derivation paths to scan (MetaMask and Trust Wallet)
-DERIVATION_PATHS = [
-    "m/44'/60'/0'/0/0",  # MetaMask standard path
-    "m/44'/60'/0'/0/1"   # Trust Wallet common alternate path
-]
-
 # Initialize BIP-39 mnemonic and Web3
 mnemo = Mnemonic("english")
 w3 = Web3()
 w3.eth.account.enable_unaudited_hdwallet_features()
+
+# Derivation paths for MetaMask and Trust Wallet
+DERIVATION_PATHS = [
+    "m/44'/60'/0'/0/0",  # MetaMask
+    "m/44'/60'/0'/0/1"   # Trust Wallet
+]
 
 def read_api_keys():
     try:
@@ -30,16 +34,16 @@ def read_api_keys():
         if not keys:
             raise ValueError(f"{API_FILE} is empty")
         if len(keys) < MAX_KEYS:
-            print(f"Warning: Only {len(keys)} API keys found, expected {MAX_KEYS}")
+            print(f"Warning: Only {len(keys)} API keys found, expected {MAX_KEYS}", flush=True)
         return keys[:MAX_KEYS]
     except FileNotFoundError:
-        print(f"Error: {API_FILE} not found")
+        print(f"Error: {API_FILE} not found", flush=True)
         return None
     except Exception as e:
-        print(f"Error reading {API_FILE}: {e}")
+        print(f"Error reading {API_FILE}: {e}", flush=True)
         return None
 
-def check_transactions(address, api_key):
+def check_transactions(address, api_key, seed_phrase):
     url = f"https://api.etherscan.io/api?module=account&action=txlist&address={address}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc&apikey={api_key}"
     try:
         response = requests.get(url, timeout=5)
@@ -48,56 +52,59 @@ def check_transactions(address, api_key):
             if data["status"] == "1":
                 return len(data["result"])
             else:
-                return 0  # Do not log "No transactions found" to console
+                return 0
         else:
             return 0
     except Exception:
         return 0
 
-def derive_addresses(seed_phrase):
-    addresses = []
-    for path in DERIVATION_PATHS:
-        try:
-            account = w3.eth.account.from_mnemonic(seed_phrase, account_path=path)
-            addresses.append(account.address)
-        except Exception:
-            continue
-    return addresses
+def derive_address(seed_phrase, derivation_path):
+    try:
+        account = w3.eth.account.from_mnemonic(seed_phrase, account_path=derivation_path)
+        return account.address
+    except Exception:
+        return None
 
 def check_wallet_with_key(api_key, attempts_counter, lock):
     while True:
         seed_phrase = mnemo.generate(strength=128)
-        addresses = derive_addresses(seed_phrase)
+        found = False
 
-        for address in addresses:
-            transactions = check_transactions(address, api_key)
+        for path in DERIVATION_PATHS:
+            address = derive_address(seed_phrase, path)
+            if not address:
+                continue
+
+            transactions = check_transactions(address, api_key, seed_phrase)
             if transactions > 0:
-                entry = f"Seed Phrase: {seed_phrase}\nAddress: {address}\nTransactions: {transactions}\n"
+                found = True
+                print(f"Found wallet with {transactions} transactions", flush=True)
+                print(f"Seed Phrase: {seed_phrase}", flush=True)
+                print(f"Address: {address}", flush=True)
+                entry = f"Seed Phrase: {seed_phrase}\nAddress: {address}\nPath: {path}\nTransactions: {transactions}\n"
                 with open(OUTPUT_FILE, "a") as f:
                     f.write(entry + "\n")
-                print("Found wallet with transactions:")
-                print(entry.strip())
-                break  # Stop scanning other paths for this seed
+                break  # Stop scanning other paths if one is successful
 
         with lock:
             attempts_counter[0] += 1
             if attempts_counter[0] % CHECK_INTERVAL == 0:
                 elapsed = time.time() - attempts_counter[1]
                 rate = attempts_counter[0] / elapsed if elapsed > 0 else 0
-                print(f"Attempts {attempts_counter[0]}: {rate:.2f} wallets/sec")
+                print(f"Attempts {attempts_counter[0]}: {rate:.2f} wallets/sec", flush=True)
 
         time.sleep(REQUEST_INTERVAL)
 
 def main():
-    print("Generating random 12-word seed phrases for Ethereum wallets...")
-    print("Scanning 2 derivation paths (MetaMask and Trust Wallet) per seed phrase.")
-    print(f"Checking ~{MAX_KEYS} wallets/sec with {MAX_KEYS} API keys (1 request/sec/key).")
-    print(f"Appending wallets with transactions to {OUTPUT_FILE}.")
-    print("Note:God mode surely do his will, Amen.")
+    print("Generating random 12-word seed phrases for Ethereum wallets...", flush=True)
+    print("Scanning 2 derivation paths (MetaMask and Trust Wallet) per seed phrase.", flush=True)
+    print(f"Checking ~{MAX_KEYS} wallets/sec with {MAX_KEYS} API keys (1 request/sec/key).", flush=True)
+    print(f"Appending wallets with transactions to {OUTPUT_FILE}.", flush=True)
+    print("Note: This is not a recovery tool. Success rate is near-zero with random mnemonics.", flush=True)
 
     api_keys = read_api_keys()
     if not api_keys:
-        print(f"Cannot proceed without valid API keys in {API_FILE}. Exiting.")
+        print(f"Cannot proceed without valid API keys in {API_FILE}. Exiting.", flush=True)
         return
 
     attempts_counter = [0, time.time()]  # [attempts, start_time]
@@ -116,9 +123,9 @@ def main():
     except KeyboardInterrupt:
         elapsed = time.time() - attempts_counter[1]
         rate = attempts_counter[0] / elapsed if elapsed > 0 else 0
-        print("\nStopped")
-        print(f"Attempts {attempts_counter[0]}: {rate:.2f} wallets/sec in {elapsed:.1f} seconds")
-        print(f"Results saved to {OUTPUT_FILE}")
+        print("Stopped", flush=True)
+        print(f"Attempts {attempts_counter[0]}: {rate:.2f} wallets/sec in {elapsed:.1f} seconds", flush=True)
+        print(f"Results saved to {OUTPUT_FILE}", flush=True)
 
 if __name__ == "__main__":
     main()
