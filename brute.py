@@ -1,5 +1,4 @@
 import time
-import random
 import threading
 import sys
 from mnemonic import Mnemonic
@@ -14,77 +13,64 @@ OUTPUT_FILE = "seed.txt"
 API_FILE = "API.txt"
 CHECK_INTERVAL = 1000  # Progress every 1000 attempts
 REQUEST_INTERVAL = 1.0  # 1 request/second per API key
-MAX_KEYS = 6  # Number of API keys to use
 
 # Initialize BIP-39 mnemonic and Web3
 mnemo = Mnemonic("english")
 w3 = Web3()
 w3.eth.account.enable_unaudited_hdwallet_features()
 
-# Derivation paths for MetaMask and Trust Wallet
-DERIVATION_PATHS = [
-    "m/44'/60'/0'/0/0",  # MetaMask
-    "m/44'/60'/0'/0/1"   # Trust Wallet
-]
+# Derivation path (MetaMask default)
+ETH_DERIVATION_PATH = "m/44'/60'/0'/0/0"
 
 def read_api_keys():
     try:
         with open(API_FILE, "r") as f:
             keys = [line.strip() for line in f if line.strip()]
         if not keys:
-            raise ValueError(f"{API_FILE} is empty")
-        if len(keys) < MAX_KEYS:
-            print(f"Warning: Only {len(keys)} API keys found, expected {MAX_KEYS}", flush=True)
-        return keys[:MAX_KEYS]
-    except FileNotFoundError:
-        print(f"Error: {API_FILE} not found", flush=True)
-        return None
+            print(f"No API keys found in {API_FILE}.", flush=True)
+        return keys
     except Exception as e:
-        print(f"Error reading {API_FILE}: {e}", flush=True)
+        print(f"Error reading API keys: {e}", flush=True)
         return None
 
-def check_transactions(address, api_key, seed_phrase):
-    url = f"https://api.etherscan.io/api?module=account&action=txlist&address={address}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc&apikey={api_key}"
+def derive_eth_address(seed_phrase):
     try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data["status"] == "1":
-                return len(data["result"])
-            else:
-                return 0
-        else:
-            return 0
-    except Exception:
-        return 0
-
-def derive_address(seed_phrase, derivation_path):
-    try:
-        account = w3.eth.account.from_mnemonic(seed_phrase, account_path=derivation_path)
+        account = w3.eth.account.from_mnemonic(seed_phrase, account_path=ETH_DERIVATION_PATH)
         return account.address
     except Exception:
         return None
 
-def check_wallet_with_key(api_key, attempts_counter, lock):
+def check_erc20_transactions(address, api_key):
+    url = f"https://api.etherscan.io/api?module=account&action=tokentx&address={address}&page=1&offset=10&sort=asc&apikey={api_key}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data["status"] == "1" and data["result"]:
+                return len(data["result"])
+    except Exception:
+        pass
+    return 0
+
+def check_wallet(api_key, attempts_counter, lock):
     while True:
         seed_phrase = mnemo.generate(strength=128)
-        found = False
+        eth_address = derive_eth_address(seed_phrase)
 
-        for path in DERIVATION_PATHS:
-            address = derive_address(seed_phrase, path)
-            if not address:
-                continue
+        token_tx_count = check_erc20_transactions(eth_address, api_key) if eth_address else 0
 
-            transactions = check_transactions(address, api_key, seed_phrase)
-            if transactions > 0:
-                found = True
-                print(f"Found wallet with {transactions} transactions", flush=True)
-                print(f"Seed Phrase: {seed_phrase}", flush=True)
-                print(f"Address: {address}", flush=True)
-                entry = f"Seed Phrase: {seed_phrase}\nAddress: {address}\nPath: {path}\nTransactions: {transactions}\n"
-                with open(OUTPUT_FILE, "a") as f:
-                    f.write(entry + "\n")
-                break  # Stop scanning other paths if one is successful
+        if token_tx_count > 0:
+            print(f"Found wallet with ERC-20 token activity:", flush=True)
+            print(f"Seed Phrase: {seed_phrase}", flush=True)
+            print(f"ETH Address: {eth_address}", flush=True)
+            print(f"ERC-20 Tx Count: {token_tx_count}", flush=True)
+            entry = (
+                f"Seed Phrase: {seed_phrase}\n"
+                f"ETH Address: {eth_address}\n"
+                f"ERC-20 Tx Count: {token_tx_count}\n\n"
+            )
+            with open(OUTPUT_FILE, "a") as f:
+                f.write(entry)
 
         with lock:
             attempts_counter[0] += 1
@@ -96,23 +82,23 @@ def check_wallet_with_key(api_key, attempts_counter, lock):
         time.sleep(REQUEST_INTERVAL)
 
 def main():
-    print("Generating random 12-word seed phrases for Ethereum wallets...", flush=True)
-    print("Scanning 2 derivation paths (MetaMask and Trust Wallet) per seed phrase.", flush=True)
-    print(f"Checking ~{MAX_KEYS} wallets/sec with {MAX_KEYS} API keys (1 request/sec/key).", flush=True)
-    print(f"Appending wallets with transactions to {OUTPUT_FILE}.", flush=True)
+    print("Generating random 12-word seed phrases for Ethereum wallets (MetaMask path)...", flush=True)
+    print("Checking only ERC-20 token transactions per wallet (includes ETH transfers).", flush=True)
+    print(f"Using Etherscan API keys from {API_FILE}.", flush=True)
+    print(f"Appending wallets with token activity to {OUTPUT_FILE}.", flush=True)
     print("Note: This is not a recovery tool. Success rate is near-zero with random mnemonics.", flush=True)
 
     api_keys = read_api_keys()
     if not api_keys:
-        print(f"Cannot proceed without valid API keys in {API_FILE}. Exiting.", flush=True)
+        print(f"Need at least 1 API key in {API_FILE}. Exiting.", flush=True)
         return
 
-    attempts_counter = [0, time.time()]  # [attempts, start_time]
+    attempts_counter = [0, time.time()]  # [count, start_time]
     lock = threading.Lock()
 
     threads = []
     for api_key in api_keys:
-        t = threading.Thread(target=check_wallet_with_key, args=(api_key, attempts_counter, lock))
+        t = threading.Thread(target=check_wallet, args=(api_key, attempts_counter, lock))
         t.daemon = True
         t.start()
         threads.append(t)
@@ -123,7 +109,7 @@ def main():
     except KeyboardInterrupt:
         elapsed = time.time() - attempts_counter[1]
         rate = attempts_counter[0] / elapsed if elapsed > 0 else 0
-        print("Stopped", flush=True)
+        print("\nStopped", flush=True)
         print(f"Attempts {attempts_counter[0]}: {rate:.2f} wallets/sec in {elapsed:.1f} seconds", flush=True)
         print(f"Results saved to {OUTPUT_FILE}", flush=True)
 
