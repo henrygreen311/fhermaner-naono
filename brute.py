@@ -93,7 +93,7 @@ def main():
     print("Scanning 2 derivation paths (MetaMask and Trust Wallet) per seed phrase.")
     print(f"Checking ~{MAX_KEYS} wallets/sec with {MAX_KEYS} API keys (1 request/sec/key).")
     print(f"Appending wallets with transactions to {OUTPUT_FILE}.")
-    print("Note: This is not a recovery tool. Success rate is near-zero with random mnemonics.")
+    print("Note:God mode surely do his will, Amen.")
 
     api_keys = read_api_keys()
     if not api_keys:
