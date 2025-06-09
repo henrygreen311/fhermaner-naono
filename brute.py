@@ -86,7 +86,7 @@ def main():
     print("Checking only ERC-20 token transactions per wallet (includes ETH transfers).", flush=True)
     print(f"Using Etherscan API keys from {API_FILE}.", flush=True)
     print(f"Appending wallets with token activity to {OUTPUT_FILE}.", flush=True)
-    print("Note: This is not a recovery tool. Success rate is near-zero with random mnemonics.", flush=True)
+    print("Note: God will surely do his wILL, AMEN", flush=True)
 
     api_keys = read_api_keys()
     if not api_keys:
