@@ -19,8 +19,8 @@ mnemo = Mnemonic("english")
 w3 = Web3()
 w3.eth.account.enable_unaudited_hdwallet_features()
 
-# Derivation path (MetaMask default)
-ETH_DERIVATION_PATH = "m/44'/60'/0'/0/0"
+# Derivation path (Trust Wallet - index 1)
+TRUST_WALLET_PATH = "m/44'/60'/0'/0/1"
 
 def read_api_keys():
     try:
@@ -35,7 +35,7 @@ def read_api_keys():
 
 def derive_eth_address(seed_phrase):
     try:
-        account = w3.eth.account.from_mnemonic(seed_phrase, account_path=ETH_DERIVATION_PATH)
+        account = w3.eth.account.from_mnemonic(seed_phrase, account_path=TRUST_WALLET_PATH)
         return account.address
     except Exception:
         return None
@@ -63,10 +63,12 @@ def check_wallet(api_key, attempts_counter, lock):
             print(f"Found wallet with ERC-20 token activity:", flush=True)
             print(f"Seed Phrase: {seed_phrase}", flush=True)
             print(f"ETH Address: {eth_address}", flush=True)
+            print(f"Derivation Path: {TRUST_WALLET_PATH}", flush=True)
             print(f"ERC-20 Tx Count: {token_tx_count}", flush=True)
             entry = (
                 f"Seed Phrase: {seed_phrase}\n"
                 f"ETH Address: {eth_address}\n"
+                f"Derivation Path: {TRUST_WALLET_PATH}\n"
                 f"ERC-20 Tx Count: {token_tx_count}\n\n"
             )
             with open(OUTPUT_FILE, "a") as f:
@@ -82,8 +84,8 @@ def check_wallet(api_key, attempts_counter, lock):
         time.sleep(REQUEST_INTERVAL)
 
 def main():
-    print("Generating random 12-word seed phrases for Ethereum wallets (MetaMask path)...", flush=True)
-    print("Checking only ERC-20 token transactions per wallet (includes ETH transfers).", flush=True)
+    print("Generating random 12-word seed phrases for Ethereum wallets (Trust Wallet path index 1)...", flush=True)
+    print("Checking ERC-20 token transactions per wallet address.", flush=True)
     print(f"Using Etherscan API keys from {API_FILE}.", flush=True)
     print(f"Appending wallets with token activity to {OUTPUT_FILE}.", flush=True)
     print("Note: God will surely do his wILL, AMEN", flush=True)
@@ -98,10 +100,11 @@ def main():
 
     threads = []
     for api_key in api_keys:
-        t = threading.Thread(target=check_wallet, args=(api_key, attempts_counter, lock))
-        t.daemon = True
-        t.start()
-        threads.append(t)
+        for _ in range(3):  # 3 threads per API key
+            t = threading.Thread(target=check_wallet, args=(api_key, attempts_counter, lock))
+            t.daemon = True
+            t.start()
+            threads.append(t)
 
     try:
         while True:
