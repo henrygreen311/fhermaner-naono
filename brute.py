@@ -100,7 +100,7 @@ def main():
 
     threads = []
     for api_key in api_keys:
-        for _ in range(3):  # 3 threads per API key
+        for _ in range(2):  # 3 threads per API key
             t = threading.Thread(target=check_wallet, args=(api_key, attempts_counter, lock))
             t.daemon = True
             t.start()
