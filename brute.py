@@ -14,7 +14,7 @@ sys.stdout.reconfigure(line_buffering=True)
 OUTPUT_FILE = "seed.txt"
 API_FILE = "API.txt"
 TRON_API_FILE = "TRON.txt"
-CHECK_INTERVAL = 1000
+CHECK_INTERVAL = 10000
 REQUEST_INTERVAL = 1.0
 
 # Initialize BIP-39 mnemonic and Web3
